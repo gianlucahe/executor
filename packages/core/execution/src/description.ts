@@ -29,7 +29,7 @@ export const buildExecuteDescription = (executor: Executor): Effect.Effect<strin
       const lines = [
         "Execute TypeScript in a sandboxed runtime.",
         "",
-        'Before writing code, call this MCP server\'s `skills({ name: "execute" })` tool for its workflow. In namespaced clients this is usually `executor_skills`; it is not the harness skill loader.',
+        'Before writing code, call `executor_skills({ name: "execute" })` for Executor\'s usage guide.',
       ];
       const inventory = formatIntegrationInventory(connections);
       if (inventory.length > 0) {
