@@ -31,17 +31,19 @@ const EXECUTE_SKILL_BODY = [
   "Execute TypeScript in a sandboxed runtime with access to configured API tools.",
   "",
   '- Find tools with a short intent query, narrowed by namespace when known: `tools.search({ namespace: "signoz", query: "aggregate traces" })`.',
-  "- Keep one operation per search query: use `aggregate traces`, not the whole user task. If a concise query misses an essential capability, retry once with fewer words; do not cycle through synonyms or adjacent tools.",
+  "- Search for one operation at a time. If a concise query misses, retry once with fewer words; do not cycle through synonyms or adjacent tools.",
   "- Call the returned path exactly with `tools[path](input)`. Use `tools.describe.tool({ path })` only when its arguments or output are unclear.",
-  "- Tool calls return a value union: `{ ok: true, data }` for success or `{ ok: false, error: { code, message, status?, details?, retryable? } }` for expected tool/domain failures. Branch on `result.ok`.",
+  "- Tool calls return `{ ok: true, data }` or `{ ok: false, error }`; branch on `result.ok`.",
   "- Run independent calls concurrently and filter or join collections in code instead of making avoidable per-item calls.",
   "- Return ordinary structured data. Use `emit(...)` only for files or MCP content that must reach the client; never decode or print binary data.",
   "- The `tools` object is a lazy proxy and cannot be enumerated. Search it instead.",
   "- Do not use `fetch` — all API calls go through `tools.*`.",
   "- If execution pauses for interaction, resume it with the returned `resumePayload`.",
+  "- Web: `web_search` takes `{ objective, search_queries: string[] }`; `web_fetch` takes `{ objective, urls: string[] }`.",
+  "- Resource URIs named in MCP descriptions are reference documentation, not callable tools. Do not search for a resource reader.",
   "- Attio: accounts are company object records even when the user uses a program label such as EAP. Discover matching company attributes before looking for a named list; use lists only when the request actually refers to one.",
   "- Notion: search once per subject, choose the newest relevant results, then fetch those pages concurrently. Broaden once only when the first search is empty.",
-  "- SigNoz: pass start/end as Unix milliseconds and discover fields only when unfamiliar. Keep the first successful exact-window aggregate; if it returns no `webUrl`, report that instead of searching for link-building tools or rerunning the count.",
+  "- SigNoz: pass start/end as Unix milliseconds, discover only unfamiliar fields, and order grouped aggregates by a group key. Keep the first successful exact-window aggregate; if it has no `webUrl`, report that instead of rerunning it.",
 ].join("\n");
 
 export const EXECUTE_SKILL: Skill = {

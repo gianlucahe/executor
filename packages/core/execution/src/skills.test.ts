@@ -6,11 +6,14 @@ describe("skills registry", () => {
   it("includes a concise execute skill without unavailable inventory advice", () => {
     expect(SKILLS).toContain(EXECUTE_SKILL);
     expect(EXECUTE_SKILL.body).toContain("tools.search");
-    expect(EXECUTE_SKILL.body).toContain("one operation per search query");
+    expect(EXECUTE_SKILL.body).toContain("one operation at a time");
     expect(EXECUTE_SKILL.body).toContain("tools[path](input)");
     expect(EXECUTE_SKILL.body).toContain("Do not use `fetch`");
+    expect(EXECUTE_SKILL.body).toContain("search_queries: string[]");
+    expect(EXECUTE_SKILL.body).toContain("not callable tools");
+    expect(EXECUTE_SKILL.body).toContain("order grouped aggregates by a group key");
     expect(EXECUTE_SKILL.body).not.toContain("connections.list");
-    expect(EXECUTE_SKILL.body.length).toBeLessThan(2_000);
+    expect(EXECUTE_SKILL.body.length).toBeLessThan(2_200);
   });
 
   it("finds a skill by exact name and misses unknown names", () => {
