@@ -1629,7 +1629,7 @@ export const mcpPlugin = definePlugin((options?: McpPluginOptions) => {
         StorageFailure
       >,
 
-    invokeTool: ({ ctx, toolRow, credential, args, elicit }) =>
+    invokeTool: ({ ctx, toolRow, credential, args, elicit, invokeOptions }) =>
       Effect.gen(function* () {
         const parsed = parseMcpIntegrationConfig(credential.config);
         if (!parsed) {
@@ -1707,6 +1707,10 @@ export const mcpPlugin = definePlugin((options?: McpPluginOptions) => {
           toolId: String(toolRow.name),
           toolName: stamp.toolName,
           args,
+          ...(stamp._meta === undefined ? {} : { toolMeta: stamp._meta }),
+          ...(invokeOptions?.clientContext === undefined
+            ? {}
+            : { clientContext: invokeOptions.clientContext }),
           transport,
           connector,
           ...(poolKey === undefined ? {} : { connectionPool, connectionPoolKey: poolKey }),

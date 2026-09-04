@@ -94,6 +94,29 @@ describe("executeWithPause failure propagation", () => {
   );
 });
 
+describe("execution client context", () => {
+  it.effect("does not expose host client context as a sandbox global or result", () =>
+    Effect.gen(function* () {
+      const executor = yield* makeExecutor();
+      const engine = createExecutionEngine({
+        executor,
+        codeExecutor: makeQuickJsExecutor(),
+      });
+      yield* Effect.addFinalizer(() =>
+        engine.shutdown.pipe(Effect.andThen(executor.close()), Effect.ignore),
+      );
+
+      const result = yield* engine.execute("return typeof clientContext", {
+        onElicitation: () => Effect.succeed({ action: "accept" }),
+        clientContext: "do-not-leak",
+      });
+
+      expect(result.result).toBe("undefined");
+      expect(JSON.stringify(result)).not.toContain("do-not-leak");
+    }),
+  );
+});
+
 describe("paused execution authorization", () => {
   it.effect("uses the resumer's current org-write access after approval", () =>
     Effect.gen(function* () {

@@ -66,6 +66,9 @@ export type OnElicitation = ElicitationHandler | "accept-all";
 export interface InvokeOptions {
   /** Override the executor-level handler for this single call. */
   readonly onElicitation?: OnElicitation;
+  /** Opaque host context for integrations that explicitly opt in to receiving it.
+   *  It is invocation metadata, not a tool argument or sandbox global. */
+  readonly clientContext?: string;
 }
 
 /** A tool was declined or cancelled during elicitation. */

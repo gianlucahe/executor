@@ -23,6 +23,7 @@ import type { CodeExecutionError, CodeExecutor, ExecuteResult } from "@executor-
 
 import {
   createExecutionEngine as createEffectExecutionEngine,
+  type ExecutionInvokeOptions,
   type ExecutionEngine as EffectExecutionEngine,
   type ExecutionResult,
   type PausedExecution,
@@ -39,11 +40,11 @@ export type ExecutionEngineConfig<E extends Cause.YieldableError = CodeExecution
 export type ExecutionEngine = {
   readonly execute: (
     code: string,
-    options: { readonly onElicitation: ElicitationHandler },
+    options: ExecutionInvokeOptions & { readonly onElicitation: ElicitationHandler },
   ) => Promise<ExecuteResult>;
   readonly executeWithPause: (
     code: string,
-    options?: { readonly autoApprove?: boolean },
+    options?: ExecutionInvokeOptions & { readonly autoApprove?: boolean },
   ) => Promise<ExecutionResult>;
   readonly resume: (
     executionId: string,
@@ -152,6 +153,7 @@ export const toPromiseExecutionEngine = <E extends Cause.YieldableError>(
         onElicitation: (ctx) =>
           // oxlint-disable-next-line executor/no-effect-escape-hatch -- boundary: host-provided Promise elicitation callback is outside the Effect error model
           Effect.tryPromise(() => options.onElicitation(ctx)).pipe(Effect.orDie),
+        ...(options.clientContext === undefined ? {} : { clientContext: options.clientContext }),
       }),
     ),
   executeWithPause: (code, options) => Effect.runPromise(engine.executeWithPause(code, options)),

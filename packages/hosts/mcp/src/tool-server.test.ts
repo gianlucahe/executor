@@ -233,6 +233,26 @@ describe("MCP host server — native elicitation mode", () => {
     });
   });
 
+  it("accepts clientContext as host-only execution metadata without changing the result", async () => {
+    let receivedOptions: Parameters<ExecutionEngine["execute"]>[1] | undefined;
+    const engine = makeStubEngine({
+      execute: (_code, options) => {
+        receivedOptions = options;
+        return Effect.succeed({ result: { value: "unchanged" } });
+      },
+    });
+
+    await withNativeClient(engine, ELICITATION_CAPS, async (client) => {
+      const result = await client.callTool({
+        name: "execute",
+        arguments: { code: "return 1", clientContext: "host-context" },
+      });
+      expect(receivedOptions?.clientContext).toBe("host-context");
+      expect(result.content).toEqual([{ type: "text", text: '{\n  "value": "unchanged"\n}' }]);
+      expect(JSON.stringify(result)).not.toContain("host-context");
+    });
+  });
+
   it("execute tool renders emitted file image output as MCP images", async () => {
     const engine = makeStubEngine({
       execute: () =>

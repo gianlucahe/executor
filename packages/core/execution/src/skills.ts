@@ -22,53 +22,31 @@ export interface Skill {
   readonly body: string;
 }
 
-// The `execute` how-to. This is the body lifted verbatim out of the old
-// `buildExecuteDescription` (Workflow + Rules); the description now points
-// here instead of inlining it.
+// The `execute` how-to stays intentionally short. Tool schemas are the contract;
+// repeating every edge case here makes routine discovery slower and encourages
+// models to perform unnecessary inventory calls before doing useful work.
 const EXECUTE_SKILL_BODY = [
   "# execute",
   "",
   "Execute TypeScript in a sandboxed runtime with access to configured API tools.",
   "",
-  "## Workflow",
-  "",
-  '1. `const { items: matches } = await tools.search({ query: "<intent + key nouns>", limit: 12 });`',
-  '2. `const path = matches[0]?.path; if (!path) return "No matching tools found.";`',
-  "3. `const details = await tools.describe.tool({ path });`",
-  "4. Use `details.inputTypeScript` / `details.outputTypeScript` and `details.typeScriptDefinitions` for compact shapes.",
-  "5. Use `tools.executor.coreTools.connections.list({})` when you need live saved-connection inventory.",
-  "6. Call the tool: `const result = await tools.<path>(input);`",
-  "",
-  "## Rules",
-  "",
-  "- `tools.search()` returns paginated, ranked matches: `{ items, total, hasMore, nextOffset }`. Best-first. Use short intent phrases like `github issues`, `repo details`, or `create calendar event`.",
-  '- When you already know the namespace, narrow with `tools.search({ namespace: "github", query: "issues" })`.',
-  "- `tools.executor.coreTools.connections.list({})` returns saved connections with `{ address, integration, owner, name, ... }`. The `address` field includes the leading `tools.` root.",
+  '- Find tools with a short intent query, narrowed by namespace when known: `tools.search({ namespace: "signoz", query: "aggregate traces" })`.',
+  "- Keep one operation per search query: use `aggregate traces`, not the whole user task. If a concise query misses an essential capability, retry once with fewer words; do not cycle through synonyms or adjacent tools.",
+  "- Call the returned path exactly with `tools[path](input)`. Use `tools.describe.tool({ path })` only when its arguments or output are unclear.",
   "- Tool calls return a value union: `{ ok: true, data }` for success or `{ ok: false, error: { code, message, status?, details?, retryable? } }` for expected tool/domain failures. Branch on `result.ok`.",
-  "- `data` is the upstream payload itself. HTTP-backed tools (OpenAPI) also set `http: { status, headers }` beside `data` — read `result.http?.headers` for pagination (Link) or rate-limit headers.",
-  "- Use `emit(value)` to append user-visible output. Plain values become MCP text content. MCP content blocks are forwarded as-is. `ToolFile` values are rendered by MIME. Emitting and returning compose: emitted items come first in the tool result, the returned value follows, and the envelope reports an `emitted` count so you can confirm the items landed.",
-  '- File-returning tools may return `ToolFile` values: `{ _tag: "ToolFile", name?, mimeType, encoding: "base64", data, byteLength }`. A "file-returning tool" includes APIs that return file bytes inside a JSON field, such as Base64-encoded `content`; wrap those payloads in a `ToolFile` and `emit()` them. Emit any attachment with `emit(result.data)`.',
-  "- Never decode or transcode bytes yourself — the sandbox has no `Buffer`, `atob`, `btoa`, `TextDecoder`, or `TextEncoder`. For base64-encoded bytes in a JSON field, wrap the payload in a `ToolFile` with its `mimeType` and `emit()` it; to forward them to an upload tool, pass the `ToolFile`'s base64 `data` as that tool's `bodyBase64` (both sides speak base64, so nothing is decoded).",
-  '- To emit MCP-native content directly, pass an MCP content block to `emit(...)`, such as `{ type: "image", data, mimeType }`, `{ type: "audio", data, mimeType }`, `{ type: "text", text }`, `{ type: "resource", resource }`, or `{ type: "resource_link", uri, name, ... }`.',
-  "- `emit(ToolFile)` is MIME-based: `image/*` becomes MCP image content, `audio/*` becomes MCP audio content, text-like files become decoded text, and other binary files become embedded MCP resources.",
-  "- `return` is only for ordinary structured data. Returning a `ToolFile`, a `ToolResult`, an MCP content block, or a bare base64 string does not emit content to the MCP client.",
-  "- Some providers, including Gmail, return attachment bytes as a `ToolFile` with no public URL to hand off — the bytes themselves are the payload, so `emit(result.data)` to display it, or pass its base64 `data` as another tool's `bodyBase64` to forward it.",
-  "- If `tools.search()` returns `hasMore: true` and you didn't find what you need, fetch the next page: `tools.search({ query, offset: nextOffset, limit })`.",
-  "- Always use the full address when calling tools: `tools.<integration>.<owner>.<connection>.<tool>(args)`. The `path` returned by `tools.search()` / `tools.describe.tool()` is already the exact path under `tools` — call `tools[path]` rather than guessing segments.",
-  "- The `tools` object is a lazy proxy — enumerating it (`Object.keys(tools)`, spread, `for...in`) throws. Use `tools.search()` or `tools.executor.coreTools.connections.list({})` instead.",
-  '- Pass an object to system tools, e.g. `tools.search({ query: "..." })`, `tools.executor.coreTools.connections.list({})`, and `tools.describe.tool({ path })`.',
-  '- `tools.describe.tool()` returns compact TypeScript shapes. Use `inputTypeScript`, `outputTypeScript`, and `typeScriptDefinitions`. If the path doesn\'t resolve, the result carries `error: { code: "tool_not_found", suggestions }` — use a suggestion instead of retrying the same path.',
-  "- When `outputTypeScriptNote` is present, the `data` type was observed from live responses rather than declared by the provider: the listed fields are reliable, but the shape may be incomplete — prefer optional access for anything not listed.",
-  "- For tools that return large collections (e.g. `getStates`, `getAll`), filter results in code rather than calling per-item tools.",
+  "- Run independent calls concurrently and filter or join collections in code instead of making avoidable per-item calls.",
+  "- Return ordinary structured data. Use `emit(...)` only for files or MCP content that must reach the client; never decode or print binary data.",
+  "- The `tools` object is a lazy proxy and cannot be enumerated. Search it instead.",
   "- Do not use `fetch` — all API calls go through `tools.*`.",
   "- If execution pauses for interaction, resume it with the returned `resumePayload`.",
-  "- TypeScript type syntax (`: T`, `as T`, generics, interfaces, type aliases) is stripped before execution — feel free to write idiomatic TypeScript using the shapes from `tools.describe.tool()`. Decorators and `enum` are not supported.",
+  "- Attio: accounts are company object records even when the user uses a program label such as EAP. Discover matching company attributes before looking for a named list; use lists only when the request actually refers to one.",
+  "- Notion: search once per subject, choose the newest relevant results, then fetch those pages concurrently. Broaden once only when the first search is empty.",
+  "- SigNoz: pass start/end as Unix milliseconds and discover fields only when unfamiliar. Keep the first successful exact-window aggregate; if it returns no `webUrl`, report that instead of searching for link-building tools or rerunning the count.",
 ].join("\n");
 
 export const EXECUTE_SKILL: Skill = {
   name: "execute",
-  summary:
-    "How to call integrations from the execute sandbox: search the catalog, read a tool's shape, call it, emit results, and resume paused runs.",
+  summary: "How to find and call configured integrations efficiently from the execute sandbox.",
   body: EXECUTE_SKILL_BODY,
 };
 

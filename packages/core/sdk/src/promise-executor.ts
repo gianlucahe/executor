@@ -63,6 +63,7 @@ export type PromiseOnElicitation =
 
 export interface PromiseInvokeOptions {
   readonly onElicitation?: PromiseOnElicitation;
+  readonly clientContext?: string;
 }
 
 type PromisifiedArg<T> = T extends EffectInvokeOptions | undefined

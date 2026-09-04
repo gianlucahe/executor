@@ -3,16 +3,14 @@ import { describe, expect, it } from "@effect/vitest";
 import { EXECUTE_SKILL, SKILLS, findSkill, renderSkillsIndex, skillCatalogFor } from "./skills";
 
 describe("skills registry", () => {
-  it("includes the execute skill with the full how-to body", () => {
+  it("includes a concise execute skill without unavailable inventory advice", () => {
     expect(SKILLS).toContain(EXECUTE_SKILL);
-    // The workflow + rules that the execute description used to inline now live
-    // in the skill body.
-    expect(EXECUTE_SKILL.body).toContain("## Workflow");
-    expect(EXECUTE_SKILL.body).toContain("## Rules");
-    expect(EXECUTE_SKILL.body).toContain("Use `emit(value)` to append user-visible output");
-    expect(EXECUTE_SKILL.body).toContain(
-      "Do not use `fetch` — all API calls go through `tools.*`.",
-    );
+    expect(EXECUTE_SKILL.body).toContain("tools.search");
+    expect(EXECUTE_SKILL.body).toContain("one operation per search query");
+    expect(EXECUTE_SKILL.body).toContain("tools[path](input)");
+    expect(EXECUTE_SKILL.body).toContain("Do not use `fetch`");
+    expect(EXECUTE_SKILL.body).not.toContain("connections.list");
+    expect(EXECUTE_SKILL.body.length).toBeLessThan(2_000);
   });
 
   it("finds a skill by exact name and misses unknown names", () => {

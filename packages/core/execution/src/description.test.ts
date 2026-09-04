@@ -100,6 +100,8 @@ describe("buildExecuteDescription", () => {
       // The full how-to now lives behind the `skills` tool, so the description
       // points there rather than inlining the workflow/rules.
       expect(description).toContain('skills({ name: "execute" })');
+      expect(description).toContain("`executor_skills`");
+      expect(description).toContain("not the harness skill loader");
       expect(description).not.toContain("Use `emit(value)` to append user-visible output");
       expect(description).not.toContain("## Workflow");
       expect(description).not.toContain("## Rules");

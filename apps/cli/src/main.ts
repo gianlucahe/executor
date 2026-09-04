@@ -122,6 +122,8 @@ import {
   waitForReachable,
   waitForUnreachable,
 } from "./daemon";
+import { makeCloseOnce } from "./close-once";
+import { isForegroundDaemonInvocation } from "./runtime-exit";
 import {
   acquireDaemonStartLock,
   canonicalDaemonHost,
@@ -1409,7 +1411,6 @@ const runMcpHttpBridge = async (input: {
 
   let finished = false;
   let closing = false;
-  let closePromise: Promise<void> | null = null;
   let resolveExit: () => void = () => {};
   const waitForExit = new Promise<void>((resolve) => {
     resolveExit = resolve;
@@ -1425,12 +1426,13 @@ const runMcpHttpBridge = async (input: {
     resolveExit();
   };
 
+  const closeTransports = makeCloseOnce(
+    () => stdio.close(),
+    () => http.close(),
+  );
   const closeBoth = (): Promise<void> => {
-    if (!closePromise) {
-      closing = true;
-      closePromise = Promise.allSettled([stdio.close(), http.close()]).then(() => undefined);
-    }
-    return closePromise;
+    closing = true;
+    return closeTransports();
   };
 
   function shutdown() {
@@ -3363,4 +3365,14 @@ const program = (
   ),
 );
 
-BunRuntime.runMain(program as Effect.Effect<void, never, never>);
+BunRuntime.runMain(
+  program as Effect.Effect<void, never, never>,
+  isForegroundDaemonInvocation(process.argv)
+    ? {
+        // The supervised daemon handles SIGTERM by closing its server and
+        // removing ownership records. Effect otherwise maps that completed
+        // interrupt to 130, which makes routine service restarts look failed.
+        teardown: (_exit, onExit) => onExit(0),
+      }
+    : undefined,
+);

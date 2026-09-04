@@ -1234,16 +1234,19 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
     const executeWithNativeElicitation = (
       code: string,
       extra: McpRequestJoinKeys,
+      clientContext?: string,
     ): Effect.Effect<McpToolResult, E> =>
       engine
         .execute(code, {
           onElicitation: makeMcpElicitationHandler(server, extra.requestId, debugLog),
+          ...(clientContext === undefined ? {} : { clientContext }),
         })
         .pipe(Effect.map(toMcpResult));
 
     const executeCode = (
       code: string,
       extra: McpRequestJoinKeys,
+      clientContext?: string,
     ): Effect.Effect<McpToolResult, E> =>
       Effect.gen(function* () {
         yield* startMarker("mcp.host.tool.execute.start", {
@@ -1257,9 +1260,11 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
           codeLength: code.length,
         });
         if (elicitationMode.mode === "native") {
-          return yield* executeWithNativeElicitation(code, extra);
+          return yield* executeWithNativeElicitation(code, extra, clientContext);
         }
-        const outcome = yield* engine.executeWithPause(code);
+        const outcome = yield* engine.executeWithPause(code, {
+          ...(clientContext === undefined ? {} : { clientContext }),
+        });
         debugLog("execute.paused_flow_result", {
           status: outcome.status,
           executionId: outcome.status === "paused" ? outcome.execution.id : undefined,
@@ -1552,9 +1557,13 @@ export const createExecutorMcpServer = <E extends Cause.YieldableError>(
         "execute",
         {
           description,
-          inputSchema: { code: z.string().trim().min(1) },
+          inputSchema: {
+            code: z.string().trim().min(1),
+            clientContext: z.string().optional(),
+          },
         },
-        ({ code }, extra) => runToolEffect(executeCode(code, extra), extra),
+        ({ code, clientContext }, extra) =>
+          runToolEffect(executeCode(code, extra, clientContext), extra),
       ),
     ).pipe(
       Effect.withSpan("mcp.host.register_tool", {

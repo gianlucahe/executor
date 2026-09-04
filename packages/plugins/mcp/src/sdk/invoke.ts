@@ -41,9 +41,21 @@ import { httpStatusFromCause, insufficientScopeFromCause } from "./http-status";
 
 const ArgsRecord = Schema.Record(Schema.String, Schema.Unknown);
 const decodeArgsRecord = Schema.decodeUnknownOption(ArgsRecord);
+const TOOL_CALL_TIMEOUT_MS = 20 * 60 * 1_000;
+export const CLIENT_CONTEXT_META_KEY = "com.blackforestlabs/client-context";
 
 const argsRecord = (value: unknown): Record<string, unknown> =>
   Option.getOrElse(decodeArgsRecord(value), () => ({}));
+
+const acceptsClientContext = (meta: Readonly<Record<string, unknown>> | undefined): boolean => {
+  const marker = meta?.[CLIENT_CONTEXT_META_KEY];
+  return (
+    typeof marker === "object" &&
+    marker !== null &&
+    !Array.isArray(marker) &&
+    (marker as Record<string, unknown>).version === 1
+  );
+};
 
 // The spec answers `tools/call` for a tool the server no longer advertises
 // with a protocol error (`-32602 Invalid params`, example message
@@ -214,6 +226,7 @@ const useConnection = (
   connection: McpConnection,
   toolName: string,
   args: Record<string, unknown>,
+  requestMeta: Record<string, unknown> | undefined,
   elicit: Elicit,
   onToolListChanged: (() => void) | undefined,
 ): Effect.Effect<unknown, McpInvocationError | McpOAuthReauthorizationRequired> =>
@@ -221,7 +234,15 @@ const useConnection = (
     installElicitationHandler(connection.client, elicit);
     installToolListChangedHandler(connection.client, onToolListChanged);
     return yield* Effect.tryPromise({
-      try: () => connection.client.callTool({ name: toolName, arguments: args }),
+      try: () =>
+        connection.client.callTool(
+          {
+            name: toolName,
+            arguments: args,
+            ...(requestMeta === undefined ? {} : { _meta: requestMeta }),
+          },
+          { timeout: TOOL_CALL_TIMEOUT_MS },
+        ),
       catch: (cause) => {
         if (Predicate.isTagged(cause, "McpOAuthReauthorizationRequired")) {
           return new McpOAuthReauthorizationRequired({
@@ -269,6 +290,10 @@ export interface InvokeMcpToolInput {
   /** The real MCP tool name advertised by the server. */
   readonly toolName: string;
   readonly args: unknown;
+  /** Opaque catalog metadata used only to determine explicit request-metadata opt-ins. */
+  readonly toolMeta?: Readonly<Record<string, unknown>>;
+  /** Host-supplied invocation context. Never added to tool arguments. */
+  readonly clientContext?: string;
   readonly transport: string;
   /** Dials a fresh connection when no reusable remote session is available. */
   readonly connector: McpConnector;
@@ -291,8 +316,19 @@ export const invokeMcpTool = (
 > =>
   Effect.gen(function* () {
     const args = argsRecord(input.args);
+    const requestMeta =
+      input.clientContext !== undefined && acceptsClientContext(input.toolMeta)
+        ? { [CLIENT_CONTEXT_META_KEY]: input.clientContext }
+        : undefined;
     const use = (connection: McpConnection) =>
-      useConnection(connection, input.toolName, args, input.elicit, input.onToolListChanged);
+      useConnection(
+        connection,
+        input.toolName,
+        args,
+        requestMeta,
+        input.elicit,
+        input.onToolListChanged,
+      );
 
     if (input.connectionPool && input.connectionPoolKey) {
       return yield* input.connectionPool.withConnection(

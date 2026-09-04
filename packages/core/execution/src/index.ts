@@ -5,6 +5,7 @@ export {
   formatTtlDuration,
   type ExecutionEngine,
   type ExecutionEngineConfig,
+  type ExecutionInvokeOptions,
   type ExecutionResult,
   type PausedExecution,
   type PausedExecutionDeadline,

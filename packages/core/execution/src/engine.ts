@@ -60,6 +60,10 @@ export type ResumeResponse = {
   readonly content?: Record<string, unknown>;
 };
 
+export type ExecutionInvokeOptions = {
+  readonly clientContext?: string;
+};
+
 // Auto-accept every elicitation. Used by the `autoApprove` path where the
 // caller is itself the human approver (the operator-facing Run/Test panel).
 const acceptAllHandler: ElicitationHandler = () => Effect.succeed({ action: "accept" });
@@ -477,7 +481,7 @@ export type ExecutionEngine<E extends Cause.YieldableError = CodeExecutionError>
    */
   readonly execute: (
     code: string,
-    options: { readonly onElicitation: ElicitationHandler },
+    options: ExecutionInvokeOptions & { readonly onElicitation: ElicitationHandler },
   ) => Effect.Effect<ExecuteResult, E>;
 
   /**
@@ -493,7 +497,7 @@ export type ExecutionEngine<E extends Cause.YieldableError = CodeExecutionError>
    */
   readonly executeWithPause: (
     code: string,
-    options?: { readonly autoApprove?: boolean },
+    options?: ExecutionInvokeOptions & { readonly autoApprove?: boolean },
   ) => Effect.Effect<ExecutionResult, E>;
 
   /**
@@ -642,7 +646,7 @@ export const createExecutionEngine = <E extends Cause.YieldableError = CodeExecu
    */
   const startPausableExecution = Effect.fn("mcp.execute")(function* (
     code: string,
-    options?: { readonly autoApprove?: boolean },
+    options?: ExecutionInvokeOptions & { readonly autoApprove?: boolean },
   ) {
     yield* Effect.annotateCurrentSpan({
       "mcp.execute.mode": "pausable",
@@ -656,6 +660,7 @@ export const createExecutionEngine = <E extends Cause.YieldableError = CodeExecu
       yield* Effect.annotateCurrentSpan({ "mcp.execute.auto_approve": true });
       const result = yield* runInlineExecution(code, {
         onElicitation: acceptAllHandler,
+        ...(options.clientContext === undefined ? {} : { clientContext: options.clientContext }),
       });
       yield* annotateExecuteOutcome(result);
       return { status: "completed", result } satisfies ExecutionResult;
@@ -696,7 +701,10 @@ export const createExecutionEngine = <E extends Cause.YieldableError = CodeExecu
 
     const invoker = makeFullInvoker(
       executor,
-      { onElicitation: elicitationHandler },
+      {
+        onElicitation: elicitationHandler,
+        ...(options?.clientContext === undefined ? {} : { clientContext: options.clientContext }),
+      },
       toolDiscoveryProvider,
     );
     fiber = yield* Effect.forkDetach(
@@ -819,7 +827,7 @@ export const createExecutionEngine = <E extends Cause.YieldableError = CodeExecu
    */
   const runInlineExecution = Effect.fn("mcp.execute")(function* (
     code: string,
-    options: { readonly onElicitation: ElicitationHandler },
+    options: ExecutionInvokeOptions & { readonly onElicitation: ElicitationHandler },
   ) {
     yield* Effect.annotateCurrentSpan({
       "mcp.execute.mode": "inline",
@@ -829,6 +837,7 @@ export const createExecutionEngine = <E extends Cause.YieldableError = CodeExecu
       executor,
       {
         onElicitation: options.onElicitation,
+        ...(options.clientContext === undefined ? {} : { clientContext: options.clientContext }),
       },
       toolDiscoveryProvider,
     );

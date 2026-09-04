@@ -19,7 +19,7 @@ import { createMcpConnector, type McpConnection, type McpConnector } from "./con
 // that precondition here — these tests construct SDK errors directly.
 beforeAll(() => loadMcpClientSdk());
 import { McpInvocationError, McpOAuthReauthorizationRequired } from "./errors";
-import { invokeMcpTool } from "./invoke";
+import { CLIENT_CONTEXT_META_KEY, invokeMcpTool } from "./invoke";
 
 const acceptAll = () => Effect.succeed(ElicitationResponse.make({ action: "accept" }));
 
@@ -148,6 +148,120 @@ const invocationRejectionCases = [
 ];
 
 describe("invokeMcpTool", () => {
+  const invokeCapturingRequest = (
+    input: Pick<Parameters<typeof invokeMcpTool>[0], "args" | "clientContext" | "toolMeta">,
+  ) => {
+    let request: unknown;
+    const upstreamResult = { content: [{ type: "text", text: "unchanged" }] };
+    const connector: McpConnector = Effect.succeed({
+      // oxlint-disable-next-line executor/no-double-cast -- boundary: minimal fake MCP client captures call params
+      client: {
+        setRequestHandler: () => undefined,
+        callTool: (value: unknown) => {
+          request = value;
+          return Promise.resolve(upstreamResult);
+        },
+      } as unknown as McpConnection["client"],
+      close: () => Promise.resolve(),
+    });
+
+    return Effect.gen(function* () {
+      const result = yield* invokeMcpTool({
+        toolId: "context_test",
+        toolName: "context_test",
+        transport: "streamable-http",
+        connector,
+        elicit: acceptAll,
+        ...input,
+      });
+      return { request, result, upstreamResult };
+    });
+  };
+
+  it.effect("sends client context in request _meta when the catalog tool opts in", () =>
+    Effect.gen(function* () {
+      const { request } = yield* invokeCapturingRequest({
+        args: { query: "hello" },
+        clientContext: "host-context",
+        toolMeta: { [CLIENT_CONTEXT_META_KEY]: { version: 1 } },
+      });
+
+      expect(request).toMatchObject({
+        _meta: { [CLIENT_CONTEXT_META_KEY]: "host-context" },
+      });
+    }),
+  );
+
+  it.effect("omits client context when the catalog tool does not opt in", () =>
+    Effect.gen(function* () {
+      const { request } = yield* invokeCapturingRequest({
+        args: {},
+        clientContext: "host-context",
+        toolMeta: { unrelated: true },
+      });
+
+      expect(request).not.toHaveProperty("_meta");
+    }),
+  );
+
+  it.effect("omits request _meta when the host supplies no client context", () =>
+    Effect.gen(function* () {
+      const { request } = yield* invokeCapturingRequest({
+        args: {},
+        toolMeta: { [CLIENT_CONTEXT_META_KEY]: { version: 1 } },
+      });
+
+      expect(request).not.toHaveProperty("_meta");
+    }),
+  );
+
+  it.effect("does not leak client context into arguments or the tool result", () =>
+    Effect.gen(function* () {
+      const args = { query: "visible argument" };
+      const { request, result, upstreamResult } = yield* invokeCapturingRequest({
+        args,
+        clientContext: "do-not-leak",
+        toolMeta: { [CLIENT_CONTEXT_META_KEY]: { version: 1 } },
+      });
+
+      expect(request).toMatchObject({ arguments: args });
+      expect((request as { readonly arguments: unknown }).arguments).toEqual(args);
+      expect(JSON.stringify((request as { readonly arguments: unknown }).arguments)).not.toContain(
+        "do-not-leak",
+      );
+      expect(result).toBe(upstreamResult);
+      expect(JSON.stringify(result)).not.toContain("do-not-leak");
+    }),
+  );
+
+  it.effect("extends the SDK timeout for long-running MCP tool calls", () =>
+    Effect.gen(function* () {
+      let requestOptions: { readonly timeout?: number } | undefined;
+      const connector: McpConnector = Effect.succeed({
+        // oxlint-disable-next-line executor/no-double-cast -- boundary: minimal fake MCP client captures call options
+        client: {
+          setRequestHandler: () => undefined,
+          callTool: (_request: unknown, options: { readonly timeout?: number }) => {
+            requestOptions = options;
+            return Promise.resolve({ content: [] });
+          },
+        } as unknown as McpConnection["client"],
+        close: () => Promise.resolve(),
+      });
+
+      yield* invokeMcpTool({
+        toolId: "long_running",
+        toolName: "long_running",
+        args: {},
+        transport: "streamable-http",
+        connector,
+        elicit: acceptAll,
+      });
+
+      expect(requestOptions?.timeout).toBe(20 * 60 * 1_000);
+    }),
+  );
+
   for (const testCase of invocationRejectionCases) {
     it.effect(testCase.name, () =>
       Effect.gen(function* () {
