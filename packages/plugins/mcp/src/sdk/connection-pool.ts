@@ -40,6 +40,7 @@ const isDeadConnectionFailure = (error: unknown): boolean => {
   if (!isMcpInvocationError(error)) return false;
   return (
     error.transportFailure === true ||
+    error.deadSession === true ||
     error.status === 400 ||
     // A 401 means the bearer this session was dialled with is no longer
     // accepted. The session is bound to that token for its lifetime, so
@@ -74,7 +75,8 @@ export interface McpConnectionPool {
 }
 
 /** Creates an MCP connection pool with lazy five-minute idle eviction and one
- * automatic fresh-dial retry for a reused session rejected with HTTP 404.
+ * automatic fresh-dial retry for a reused session rejected as missing or
+ * invalid before execution (HTTP 400/404 or a dead-session protocol error).
  *
  * "Lazy" means activity-driven — there is no timer and no background fiber — but
  * it applies to EVERY parked connection, not only the identity being asked for.
@@ -168,7 +170,9 @@ export const createMcpConnectionPool = (): McpConnectionPool => {
 
     return run(false).pipe(
       Effect.catch((error) =>
-        reused && isMcpInvocationError(error) && error.status === 404
+        reused &&
+        isMcpInvocationError(error) &&
+        (error.status === 400 || error.status === 404 || error.deadSession === true)
           ? run(true)
           : Effect.fail(error),
       ),

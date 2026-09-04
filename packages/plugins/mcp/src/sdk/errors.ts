@@ -71,6 +71,9 @@ export class McpInvocationError extends Data.TaggedError("McpInvocationError")<{
    *  protocol response. Used only to decide whether a leased session is safe
    *  to return to the idle pool. */
   readonly transportFailure?: boolean;
+  /** The server rejected a previously valid Streamable HTTP session after a
+   *  restart or eviction. The pool drops it and retries once on a fresh dial. */
+  readonly deadSession?: boolean;
   /** The server rejected the call as an unknown tool (protocol error), which
    *  means the persisted catalog has drifted from the server's live tool set. */
   readonly unknownTool?: boolean;

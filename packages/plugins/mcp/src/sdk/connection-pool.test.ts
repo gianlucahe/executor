@@ -3,7 +3,9 @@ import { Effect } from "effect";
 import { ElicitationResponse, type Elicit } from "@executor-js/sdk";
 
 import { createMcpConnector } from "./connection";
+import type { McpConnection } from "./connection";
 import { createMcpConnectionPool } from "./connection-pool";
+import { McpInvocationError } from "./errors";
 import { invokeMcpTool } from "./invoke";
 import { makeEchoMcpServer, serveMcpServer } from "../testing";
 
@@ -119,6 +121,72 @@ describe("MCP connection pool", () => {
         yield* pool.close();
       }),
     ),
+  );
+
+  it.effect("redials once when a server reports an evicted protocol session", () =>
+    Effect.gen(function* () {
+      const pool = createMcpConnectionPool();
+      let dials = 0;
+      const connector = Effect.sync(
+        () =>
+          // oxlint-disable-next-line executor/no-double-cast -- boundary: pool test fake needs only connection identity and close
+          ({
+            client: { dial: ++dials },
+            close: () => Promise.resolve(),
+          }) as unknown as McpConnection,
+      );
+
+      yield* pool.withConnection("server", connector, () => Effect.succeed("warm"));
+      let attempts = 0;
+      const result = yield* pool.withConnection("server", connector, () =>
+        ++attempts === 1
+          ? Effect.fail(
+              new McpInvocationError({
+                toolName: "echo",
+                message: "MCP tool call failed for echo",
+                deadSession: true,
+              }),
+            )
+          : Effect.succeed("reconnected"),
+      );
+
+      expect(result).toBe("reconnected");
+      expect(dials).toBe(2);
+      expect(attempts).toBe(2);
+      yield* pool.close();
+    }),
+  );
+
+  it.effect("redials once when an evicted session is surfaced as HTTP 400", () =>
+    Effect.gen(function* () {
+      const pool = createMcpConnectionPool();
+      let dials = 0;
+      const connector = Effect.sync(
+        () =>
+          // oxlint-disable-next-line executor/no-double-cast -- boundary: pool test fake needs only connection identity and close
+          ({
+            client: { dial: ++dials },
+            close: () => Promise.resolve(),
+          }) as unknown as McpConnection,
+      );
+      yield* pool.withConnection("server", connector, () => Effect.succeed("warm"));
+      let attempts = 0;
+      const result = yield* pool.withConnection("server", connector, () =>
+        ++attempts === 1
+          ? Effect.fail(
+              new McpInvocationError({
+                toolName: "echo",
+                message: "MCP tool call failed for echo",
+                status: 400,
+                transportFailure: true,
+              }),
+            )
+          : Effect.succeed("reconnected"),
+      );
+      expect(result).toBe("reconnected");
+      expect(dials).toBe(2);
+      yield* pool.close();
+    }),
   );
 
   it.effect("drops a connection after a transport-level invocation failure", () =>

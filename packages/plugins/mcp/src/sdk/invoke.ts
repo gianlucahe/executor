@@ -95,6 +95,15 @@ const isUnknownToolCause = (cause: unknown, toolName: string): boolean => {
   );
 };
 
+const isDeadSessionCause = (cause: unknown): boolean => {
+  const protocolError = asProtocolError(cause);
+  return (
+    protocolError !== undefined &&
+    protocolError.code === -32001 &&
+    /^session not found$/i.test(protocolError.message.trim())
+  );
+};
+
 // ---------------------------------------------------------------------------
 // Elicitation bridge — decode incoming MCP ElicitRequest, route through
 // the host's elicit function, marshal the response back to MCP shape.
@@ -268,6 +277,7 @@ const useConnection = (
           message: `MCP tool call failed for ${toolName}`,
           ...(status === undefined ? {} : { status }),
           ...(!protocolFailure ? { transportFailure: true } : {}),
+          ...(isDeadSessionCause(cause) ? { deadSession: true } : {}),
           ...(isUnknownToolCause(cause, toolName) ? { unknownTool: true } : {}),
           ...(status === 403 && insufficientScopeFromCause(cause)
             ? { insufficientScope: true }

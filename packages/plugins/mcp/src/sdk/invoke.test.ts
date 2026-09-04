@@ -130,6 +130,14 @@ const invocationRejectionCases = [
     expectedStatus: undefined,
   },
   {
+    name: "classifies an evicted Streamable HTTP session without exposing protocol details",
+    toolId: "dead_session",
+    transport: "streamable-http",
+    cause: new ProtocolError(-32001, "Session not found"),
+    expectedStatus: undefined,
+    expectedDeadSession: true,
+  },
+  {
     name: "does not invent a status from non-HTTP rejection shapes",
     toolId: "network",
     transport: "streamable-http",
@@ -284,6 +292,7 @@ describe("invokeMcpTool", () => {
           message: expect.not.stringContaining("do-not-leak"),
         });
         expect(invocation.status).toBe(testCase.expectedStatus);
+        expect(invocation.deadSession).toBe(testCase.expectedDeadSession);
         expect("cause" in invocation).toBe(false);
       }),
     );
